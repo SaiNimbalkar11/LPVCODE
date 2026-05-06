@@ -1,0 +1,121 @@
+
+%%writefile matrix_mul.cu
+#include <iostream>
+#include <cuda_runtime.h>
+using namespace std;
+
+// CUDA Kernel
+__global__ void matrixMul(int *A, int *B, int *C, int N)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < N && col < N)
+    {
+        int sum = 0;
+
+        for (int k = 0; k < N; k++)
+        {
+            sum += A[row * N + k] * B[k * N + col];
+        }
+
+        C[row * N + col] = sum;
+    }
+}
+
+int main()
+{
+    int N = 3;
+    int size = N * N * sizeof(int);
+
+    int h_A[9] = {1,2,3,4,5,6,7,8,9};
+    int h_B[9] = {9,8,7,6,5,4,3,2,1};
+    int h_C[9];
+
+    int *d_A, *d_B, *d_C;
+
+    cudaMalloc(&d_A, size);
+    cudaMalloc(&d_B, size);
+    cudaMalloc(&d_C, size);
+
+    cudaMemcpy(d_A, h_A, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, size, cudaMemcpyHostToDevice);
+
+    dim3 threadsPerBlock(16,16);
+    dim3 blocksPerGrid((N + 15)/16, (N + 15)/16);
+
+    matrixMul<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, N);
+
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_C, d_C, size, cudaMemcpyDeviceToHost);
+
+    cout << "Result Matrix:\n";
+    for(int i = 0; i < N; i++)
+    {
+        for(int j = 0; j < N; j++)
+        {
+            cout << h_C[i * N + j] << " ";
+        }
+        cout << endl;
+    }
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    return 0;
+}
+
+
+%%writefile vector_add.cu
+#include <iostream>
+#include <cuda_runtime.h>
+using namespace std;
+
+__global__ void addVectors(int* A, int* B, int* C, int n) 
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) C[i] = A[i] + B[i];
+}
+
+int main() 
+{
+    int n;
+    cout << "Enter size of vectors: ";
+    cin >> n;
+
+    int size = n * sizeof(int);
+    int *A, *B, *C;
+
+    cudaMallocHost(&A, size);
+    cudaMallocHost(&B, size);
+    C = (int*) malloc(size);
+
+    cout << "Enter elements of vector A: ";
+    for(int i=0;i<n;i++) cin >> A[i];
+
+    cout << "Enter elements of vector B: ";
+    for(int i=0;i<n;i++) cin >> B[i];
+
+    int *dA, *dB, *dC;
+
+    cudaMalloc(&dA, size);
+    cudaMalloc(&dB, size);
+    cudaMalloc(&dC, size);
+
+    cudaMemcpy(dA, A, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(dB, B, size, cudaMemcpyHostToDevice);
+
+    int blockSize = 256;
+    int numBlocks = (n + blockSize - 1) / blockSize;
+
+    addVectors<<<numBlocks, blockSize>>>(dA, dB, dC, n);
+    cudaDeviceSynchronize();
+    cudaMemcpy(C, dC, size, cudaMemcpyDeviceToHost);
+
+    cout << "Resultant vector C: ";
+    for(int i=0;i<n;i++) cout << C[i] << " ";
+    cout << endl;
+    return 0;
+}
